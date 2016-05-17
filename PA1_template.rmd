@@ -1,0 +1,185 @@
+---
+title: "Reproducible Research - Course Project 1"
+date: "May 16, 2016"
+output: html_document
+---
+
+This is an R Markdown document which details differnt chunks of information (Code and Output) corresponding to first course project in Reproducible Research Course part of Data Science Specialization in Coursera
+
+Find below the detailed step by step implementation of different divisions of course project
+
+# Loading & Pre-processing data
+
+Reading & Loading data : 
+
+```{r}
+RRdataset <- read.csv("RR_Project1/activity.csv")
+```
+
+Pre-processing data : 
+
+Creating a new column to map the day corresponding to each entry
+
+```{r}
+RRdataset$day <- weekdays(as.Date(RRdataset$date))
+RRdataset$DateTime<- as.POSIXct(RRdataset$date, format="%Y-%m-%d")
+```
+
+Creating a subset of data which has no "NA" values
+
+```{r}
+RRdataset2 <- RRdataset[!is.na(RRdataset$steps),]
+```
+
+# What is mean total number of steps taken per day?
+
+1. Calculating the total number of steps taken per day
+
+```{r}
+Aggregation <- aggregate(RRdataset2$steps ~ RRdataset2$date, FUN=sum, )
+colnames(Aggregation)<- c("Date", "Steps")
+```
+
+2. Drawing a Histogram of total steps taken per day
+
+```{r}
+hist(Aggregation$Steps, xlab="Steps Range", main = "Total Steps taken per Day")
+```
+
+3. Calculate and report the mean and median of the total number of steps taken per day
+
+```{r}
+Mean <- as.integer(mean(Aggregation$Steps))
+Median <- as.integer(median(Aggregation$Steps))
+```
+
+
+The average number of steps per day `r Mean`
+
+The median number of steps per day `r Median`
+
+
+# What is the average daily activity pattern?
+
+1. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+
+```{r}
+library(ggplot2)
+library(plyr)
+Aggregation2 <- ddply(RRdataset2, .(interval), summarize, Avg = mean(steps))
+p <- ggplot(Aggregation2, aes(x=interval, y=Avg), xlab = "Interval", ylab="Average Number of Steps")
+p + geom_line()+xlab("Interval")+ylab("Average Number of Steps")+ggtitle("Average Number of Steps per Interval")
+```
+
+2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r}
+subset(Aggregation2, Aggregation2$Avg == max(Aggregation2$Avg))
+```
+
+The time interval with Maximum number of steps is 835
+
+
+# Imputing missing values
+
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+
+1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+
+```{r}
+CountNA <- length(which(is.na(RRdataset)))
+```
+
+Total number of rows with NA values `r CountNA`
+
+2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+
+Approach : The day of the week to an extent impacts the actual number of steps taken and hence I intend to populate the NA values based on the avg numbers of steps walked corresponding to the day of the week
+
+Computing the average summary on a day - Interval level
+
+```{r}
+SummaryTable <- ddply(RRdataset2, .(interval, day), summarize, Avg = mean(steps))
+```
+
+consolidating all data points with NA values
+
+```{r}
+NAdata <- RRdataset[is.na(RRdataset$steps),]
+```
+
+Merging the data together and creating a consolidated data store
+
+```{r}
+newdata <- merge(NAdata, SummaryTable, by=c("interval", "day"))
+newdata2 <- newdata[,c(6,4,1,2,5)]
+colnames(newdata2)<- c("steps", "date", "interval", "day", "DateTime")
+mergedDatastore <- rbind(RRdataset2, newdata2)
+```
+
+Validating the number of rows to match the original 
+
+```{r}
+count <- nrow(mergedDatastore)
+```
+
+The updated data store has the same count as the original data store which is `r count` 
+
+Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. 
+
+Computing number of steps per day 
+
+```{r}
+Aggregation3 <- aggregate(mergedDatastore$steps ~ mergedDatastore$date, FUN=sum )
+colnames(Aggregation3)<- c("Date", "Avg_Number_of_Steps")
+```
+
+Do these values differ from the estimates from the first part of the assignment? 
+
+
+Mean and Median Computation
+
+```{r}
+newMean <- as.integer(mean(Aggregation3$Avg_Number_of_Steps))
+newMedian <- as.integer(median(Aggregation3$Avg_Number_of_Steps))
+```
+
+The new average number steps per day `r newMean` is different from that of the already computed value - `r Mean`
+
+The new Median number steps per day `r newMedian` is different from that of the already computed value - `r Median`
+
+What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+Superimposing old and new histograms to visually represent the difference
+
+```{r}
+hist(Aggregation3$Avg_Number_of_Steps, breaks=5, xlab="Steps", main = "Average Steps per Day with NA", col="Red")
+hist(Aggregation$Steps, breaks=5, xlab="Steps", main = "Average Steps per Day without NA", col="blue", add=T)
+legend("topright", c("Imputed Data", "Data Without NA"), fill=c("Red", "blue") )
+```
+
+# Are there differences in activity patterns between weekdays and weekends?
+
+Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+```{r}
+mergedDatastore$DayType <- ifelse(mergedDatastore$day %in% c("Saturday", "Sunday"), "WeekEnd", "WeekDay")
+```
+
+Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.
+
+```{r}
+library(lattice)
+Datagrouping <- ddply(mergedDatastore, .(interval, DayType), summarize, Avg = mean(steps))
+```
+
+Comparitive Panel Plotting
+
+```{r}
+xyplot(Avg~interval|DayType, data=Datagrouping, type="l",  layout = c(1,2),
+       main="Average Number of Steps per Interval Based on Day Type", 
+       ylab="Average Number of Steps", xlab="Interval Distribution")
+```
+
+As inferred from the plot, ppl tend to be more active on the weekends compared to that of weekdays, however the most active time seems to be closely related and is in the range of 800 to 900 mins on a 2440 minute scale
